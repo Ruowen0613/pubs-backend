@@ -32,6 +32,24 @@ router.get('/:id', async (req, res) => {
     }
   });
 
+// PUT /api/authors/:id
+router.put('/:id', async (req, res) => {
+    const id = req.params.id;
+    const { au_lname, au_fname, phone, address, city, state, zip, contract } = req.body;
+  
+    try {
+      await sql.query`
+        UPDATE authors
+        SET au_lname = ${au_lname}, au_fname = ${au_fname}, phone = ${phone}, address = ${address}, city = ${city}, state = ${state}, zip = ${zip}, contract = ${contract}
+        WHERE au_id = ${id}
+      `;
+      res.status(200).json({ message: 'Author updated successfully' });
+    } catch (err) {
+      console.error('Error updating author:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
 // DELETE /api/authors/:id
 router.delete('/:id', async (req, res) => {
     const id = req.params.id;
