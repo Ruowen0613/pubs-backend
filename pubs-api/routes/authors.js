@@ -32,6 +32,22 @@ router.get('/:id', async (req, res) => {
     }
   });
 
+// POST /api/authors
+router.post('/', async (req, res) => {
+    const { au_id, au_lname, au_fname, phone, address, city, state, zip, contract } = req.body;
+    
+    try {
+      const result = await sql.query`
+        INSERT INTO authors (au_id, au_lname, au_fname, phone, address, city, state, zip, contract)
+        VALUES (${au_id}, ${au_lname}, ${au_fname}, ${phone}, ${address}, ${city}, ${state}, ${zip}, ${contract})
+      `;
+      res.status(201).json({ message: 'Author added successfully' });
+    } catch (err) {
+      console.error('Error adding author:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
 // PUT /api/authors/:id
 router.put('/:id', async (req, res) => {
     const id = req.params.id;
@@ -53,12 +69,14 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/authors/:id
 router.delete('/:id', async (req, res) => {
     const id = req.params.id;
+    console.log(`Attempting to delete author with au_id: ${id}`);
     try {
         const result = await sql.query`
             delete from titleauthor where au_id = ${id};
             delete from authors where au_id = ${id};
         `;
-      if (result.rowsAffected[0] > 0) {
+        console.log(`SQL Delete Result: ${JSON.stringify(result)}`);
+      if (result.rowsAffected[1] > 0) {
         res.json({ message: 'Author deleted successfully' });
       } else {
         res.status(404).json({ error: 'Author not found' });
@@ -68,4 +86,5 @@ router.delete('/:id', async (req, res) => {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+  
 module.exports = router;
