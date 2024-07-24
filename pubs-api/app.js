@@ -5,6 +5,8 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { connectToDB } = require('./db');
 const authorsRouter = require('./routes/authors');
+const booksRouter = require('./routes/books')
+const publishersRouter = require('./routes/publishers')
 
 const app = express();
 const port = 3000;
@@ -23,6 +25,8 @@ connectToDB();
 
 // Mount routes
 app.use('/api/authors', authorsRouter); // tells the Express app to use the authorsRouter middleware for any route that starts with /api/authors.
+app.use('/api/books', booksRouter);
+app.use('/api/publishers', publishersRouter);
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
