@@ -23,13 +23,38 @@ router.get('/:id', async (req, res) => {
     const id = req.params.id;
     try {
       const result = await sql.query`
-        select title_id, title, type, pub_id, price, royalty, ytd_sales, notes, pubdate
-        from titles 
-        where title_id = ${id}
+        select t.title_id, t.title, t.type, t.pub_id, t.price, t.advance, 
+               t.royalty, t.ytd_sales, t.notes, t.pubdate, ta.royaltyper, 
+               a.au_fname + ' ' + a.au_lname as authorName
+        from titles t
+        join titleauthor ta on t.title_id = ta.title_id
+        join authors a on a.au_id = ta.au_id
+        where t.title_id = ${id}
+        order by ta.au_ord
       `;
+  
       if (result.recordset.length > 0) {
-        res.json(result.recordset[0]); // Assuming `au_id` is unique
-      } else {
+        const bookRecord = result.recordset[0]; // Take the first record as base
+        const authors = result.recordset.map(record => record.authorName);
+  
+        // Create the combined book object
+        const book = {
+          title_id: bookRecord.title_id,
+          title: bookRecord.title,
+          type: bookRecord.type,
+          pub_id: bookRecord.pub_id,
+          price: bookRecord.price,
+          advance: bookRecord.advance,
+          royalty: bookRecord.royalty,
+          ytd_sales: bookRecord.ytd_sales,
+          notes: bookRecord.notes,
+          pubdate: bookRecord.pubdate,
+          royaltyper: bookRecord.royaltyper,
+          authorNames: authors
+        };
+  
+        res.json(book);
+       } else {
         res.status(404).json({ error: 'Book not found' });
       }
     } catch (err) {
@@ -40,32 +65,35 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/books
 router.post('/', async (req, res) => {
-    const { title_id, title, type, pub_id, price, royalty, ytd_sales, notes, pubdate, royaltyper, authorName } = req.body;
+    const { title_id, title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate, royaltyper, authorNames } = req.body;
     console.log('Request Body:', req.body);
     
+
     try {
       const pubIdValue = pub_id ? pub_id : null;
-      const authorResult = await sql.query`
-      SELECT au_id FROM authors WHERE CONCAT(au_fname, ' ', au_lname) = ${authorName}
-    `;
 
-    if (authorResult.recordset.length === 0) {
-      return res.status(404).json({ error: 'Author not found' });
-    }
+      
+      await sql.query`
+          INSERT INTO titles (title_id, title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate)
+          VALUES (${title_id}, ${title}, ${type}, ${pubIdValue}, ${price}, ${advance}, ${royalty}, ${ytd_sales}, ${notes}, ${pubdate})
+      `;
 
-    const au_id = authorResult.recordset[0].au_id;
+      for (const authorName of authorNames) {
+        const authorResult = await sql.query`
+          SELECT au_id FROM authors WHERE CONCAT(au_fname, ' ', au_lname) = ${authorName}
+        `;
 
+        if (authorResult.recordset.length === 0) {
+          return res.status(404).json({ error: 'Author not found' });
+        }
 
-    await sql.query`
-        INSERT INTO titles (title_id, title, type, pub_id, price, royalty, ytd_sales, notes, pubdate)
-        VALUES (${title_id}, ${title}, ${type}, ${pubIdValue}, ${price}, ${royalty}, ${ytd_sales}, ${notes}, ${pubdate})
-    `;
+        const au_id = authorResult.recordset[0].au_id;
 
-    await sql.query`
-    INSERT INTO titleauthor (au_id, title_id, au_ord, royaltyper)
-    VALUES (${au_id}, ${title_id}, ${au_ord}, ${royaltyper})
-  `;
-
+        await sql.query`
+        INSERT INTO titleauthor (au_id, title_id, au_ord, royaltyper)
+        VALUES (${au_id}, ${title_id}, ${authorNames.indexOf(authorName) + 1}, ${royaltyper})
+      `;
+      }
     res.status(201).json({ message: 'Book and author link added successfully' });
     } catch (err) {
       console.error('Error adding book:', err);
@@ -76,26 +104,37 @@ router.post('/', async (req, res) => {
 // PUT /api/books/:id
 router.put('/:id', async (req, res) => {
     const id = req.params.id;
-    const { title, type, au_fname, au_lname, pub_id, price, royalty, ytd_sales, notes, pubdate, authorName } = req.body;
+    const { title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate, royaltyper, authorNames } = req.body;
   
     try {
-      let authorResult = await sql.query`
-      SELECT au_id FROM authors WHERE au_fname = ${au_fname} AND au_lname = ${au_lname}
-    `;
+      const pubIdValue = pub_id ? pub_id : null;
 
-      let au_id;
-      if (authorResult.recordset.length > 0) {
-        au_id = authorResult.recordset[0].au_id;
-      } else {
-        //insert new author
-
-      }
       await sql.query`
-
         UPDATE titles
-        SET title = ${title}, type = ${type}, pub_id = ${pub_id}, price = ${price}, royalty = ${royalty}, ytd_sales = ${ytd_sales}, notes = ${notes}, pubdate = ${pubdate}
+        SET title = ${title}, type = ${type}, pub_id = ${pubIdValue}, price = ${price}, advance = ${advance}, royalty = ${royalty}, ytd_sales = ${ytd_sales}, notes = ${notes}, pubdate = ${pubdate}
         WHERE title_id = ${id}
       `;
+
+      await sql.query`
+      DELETE FROM titleauthor WHERE title_id = ${id}
+    `;
+
+      for (const authorName of authorNames) {
+        const authorResult = await sql.query`
+          SELECT au_id FROM authors WHERE CONCAT(au_fname, ' ', au_lname) = ${authorName}
+        `;
+
+        if (authorResult.recordset.length === 0) {
+          return res.status(404).json({ error: 'Author not found' });
+        }
+
+        const au_id = authorResult.recordset[0].au_id;
+
+        await sql.query`
+          INSERT INTO titleauthor (title_id, au_id, au_ord, royaltyper)
+          VALUES (${id}, ${au_id}, ${authorNames.indexOf(authorName) + 1}, ${royaltyper})
+        `;
+      }
       res.status(200).json({ message: 'Book updated successfully' });
     } catch (err) {
       console.error('Error updating book:', err);

@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const result = await sql.query`
-        select * from publishers
+        select pub_id, pub_name from publishers
     `;
     res.json(result.recordset);
   } catch (err) {
