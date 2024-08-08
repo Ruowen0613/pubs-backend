@@ -19,11 +19,7 @@ var config = {
     driver: 'msnodesqlv8',
     connectionString: 'Driver=SQL Server Native Client 11.0;Server=ON34C03257014\\MSSQLSERVER01;Database=pubs;Trusted_Connection=yes;'
 };
- 
-// Driver={ODBC Driver 18 for SQL Server};
-//Server=tcp:co-op-db-wang.database.windows.net,1433;Database=pubs;
-//Uid=co-op-login;Pwd={your_password_here};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;
-// Function to connect to database
+
 async function connectToDB() {
     try {
         await sql.connect(config);

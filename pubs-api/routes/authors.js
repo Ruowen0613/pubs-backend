@@ -68,23 +68,50 @@ router.put('/:id', async (req, res) => {
 
 // DELETE /api/authors/:id
 router.delete('/:id', async (req, res) => {
-    const id = req.params.id;
-    console.log(`Attempting to delete author with au_id: ${id}`);
-    try {
-        const result = await sql.query`
-            delete from titleauthor where au_id = ${id};
-            delete from authors where au_id = ${id};
-        `;
-        console.log(`SQL Delete Result: ${JSON.stringify(result)}`);
-      if (result.rowsAffected[1] > 0) {
-        res.json({ message: 'Author deleted successfully' });
-      } else {
-        res.status(404).json({ error: 'Author not found' });
+  const id = req.params.id;
+  console.log(`Attempting to delete author with au_id: ${id}`);
+  try {
+      // First, select all titles associated with the author to capture their title_ids
+      const titlesResult = await sql.query`
+          SELECT title_id FROM titleauthor WHERE au_id = ${id};
+      `;
+
+      if (titlesResult.recordset.length > 0) {
+          // Extract title IDs from the result
+          const titleIds = titlesResult.recordset.map(row => row.title_id);
+
+          // Delete sales records for those titles
+          await sql.query`
+              DELETE FROM sales WHERE title_id IN (${titleIds});
+          `;
+
+          // Delete entries from the titleauthor table for this author
+          await sql.query`
+              DELETE FROM titleauthor WHERE au_id = ${id};
+          `;
+
+          // Delete the titles themselves
+          await sql.query`
+              DELETE FROM titles WHERE title_id IN (${titleIds});
+          `;
       }
-    } catch (err) {
+
+      // Finally, delete the author
+      const deleteAuthorResult = await sql.query`
+          DELETE FROM authors WHERE au_id = ${id};
+      `;
+
+      console.log(`SQL Delete Result: ${JSON.stringify(deleteAuthorResult)}`);
+      if (deleteAuthorResult.rowsAffected[0] > 0) {
+          res.json({ message: 'Author and associated books and sales deleted successfully' });
+      } else {
+          res.status(404).json({ error: 'Author not found' });
+      }
+  } catch (err) {
       console.error(`Error deleting author with id ${id}:`, err);
       res.status(500).json({ error: 'Internal server error' });
-    }
-  });
+  }
+});
+
   
 module.exports = router;
