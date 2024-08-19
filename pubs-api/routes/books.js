@@ -36,6 +36,7 @@ router.get('/:id', async (req, res) => {
     if (result.recordset.length > 0) {
       const bookRecord = result.recordset[0]; // Take the first record as base
       const authors = result.recordset.map(record => record.authorName);
+      const royaltypers = result.recordset.map(record => record.royaltyper);
 
       // Create the combined book object
       const book = {
@@ -49,8 +50,8 @@ router.get('/:id', async (req, res) => {
         ytd_sales: bookRecord.ytd_sales,
         notes: bookRecord.notes,
         pubdate: bookRecord.pubdate,
-        royaltyper: bookRecord.royaltyper,
-        authorNames: authors
+        authorNames: authors,
+        royalTypers: royaltypers
       };
 
       res.json(book);
@@ -65,34 +66,46 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/books
 router.post('/', async (req, res) => {
-  const { title_id, title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate, royaltyper, authorNames } = req.body;
-  //console.log('Request Body:', req.body);
-
+  const { title_id, title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate, authorNames, royalTypers } = req.body;
 
   try {
     const pubIdValue = pub_id ? pub_id : null;
 
+    // Insert the book details into the titles table
     await sql.query`
-          INSERT INTO titles (title_id, title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate)
-          VALUES (${title_id}, ${title}, ${type}, ${pubIdValue}, ${price}, ${advance}, ${royalty}, ${ytd_sales}, ${notes}, ${pubdate})
+      INSERT INTO titles (title_id, title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate)
+      VALUES (${title_id}, ${title}, ${type}, ${pubIdValue}, ${price}, ${advance}, ${royalty}, ${ytd_sales}, ${notes}, ${pubdate})
+    `;
+
+    console.log(royalTypers);
+    if (royalTypers.length < authorNames.length) {
+      // Fill missing royalty percentages with a default value, e.g., 0
+      while (royalTypers.length < authorNames.length) {
+        royalTypers.push(0);
+      }
+    }
+
+    // Insert each author and their royalty percentage into the titleauthor table
+    for (let i = 0; i < authorNames.length; i++) {
+      const authorName = authorNames[i];
+      const royaltyPercent = royalTypers[i];
+
+      const authorResult = await sql.query`
+        SELECT au_id FROM authors WHERE CONCAT(au_fname, ' ', au_lname) = ${authorName}
       `;
 
-    for (const authorName of authorNames) {
-      const authorResult = await sql.query`
-          SELECT au_id FROM authors WHERE CONCAT(au_fname, ' ', au_lname) = ${authorName}
-        `;
-
       if (authorResult.recordset.length === 0) {
-        return res.status(404).json({ error: 'Author not found' });
+        return res.status(404).json({ error: `Author '${authorName}' not found` });
       }
 
       const au_id = authorResult.recordset[0].au_id;
 
       await sql.query`
         INSERT INTO titleauthor (au_id, title_id, au_ord, royaltyper)
-        VALUES (${au_id}, ${title_id}, ${authorNames.indexOf(authorName) + 1}, ${royaltyper})
+        VALUES (${au_id}, ${title_id}, ${i + 1}, ${royaltyPercent})
       `;
     }
+
     res.status(201).json({ message: 'Book and author link added successfully' });
   } catch (err) {
     console.error('Error adding book:', err);
@@ -100,10 +113,12 @@ router.post('/', async (req, res) => {
   }
 });
 
+
+
 // PUT /api/books/:id
 router.put('/:id', async (req, res) => {
   const id = req.params.id;
-  const { title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate, royaltyper, authorNames } = req.body;
+  const { title, type, pub_id, price, advance, royalty, ytd_sales, notes, pubdate, authorNames, royalTypers } = req.body;
 
   try {
     const pubIdValue = pub_id ? pub_id : null;
@@ -118,7 +133,12 @@ router.put('/:id', async (req, res) => {
       DELETE FROM titleauthor WHERE title_id = ${id}
     `;
 
-    for (const authorName of authorNames) {
+    // Insert updated authors and royalties
+    for (let i = 0; i < authorNames.length; i++) {
+      const authorName = authorNames[i];
+      const royaltyPer = royalTypers[i];
+
+      // Find author ID
       const authorResult = await sql.query`
           SELECT au_id FROM authors WHERE CONCAT(au_fname, ' ', au_lname) = ${authorName}
         `;
@@ -129,9 +149,10 @@ router.put('/:id', async (req, res) => {
 
       const au_id = authorResult.recordset[0].au_id;
 
+      // Insert author with corresponding royalty
       await sql.query`
           INSERT INTO titleauthor (title_id, au_id, au_ord, royaltyper)
-          VALUES (${id}, ${au_id}, ${authorNames.indexOf(authorName) + 1}, ${royaltyper})
+          VALUES (${id}, ${au_id}, ${i + 1}, ${royaltyPer})
         `;
     }
     res.status(200).json({ message: 'Book updated successfully' });
